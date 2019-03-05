@@ -1,0 +1,158 @@
+#!/bin/bash - 
+#===============================================================================
+#
+#          FILE: proxy-tester
+# 
+#         USAGE: ./proxy-tester 
+# 
+#   DESCRIPTION: a simple script to check your specific proxy server health
+# 
+#       OPTIONS: ---
+#  REQUIREMENTS: ---
+#          BUGS: ---
+#         NOTES: ---
+#        AUTHOR: VirtualDemon (VD) 
+#  ORGANIZATION: 
+#       CREATED: 03/05/2019 18:38
+#      REVISION:  ---
+#===============================================================================
+# you can fork me and make me better from : https://github.com/virtualdemon/proxy-tester
+# licensed under GNU GENERAL PUBLIC LICENSE Version 3
+
+# reset the screen
+#tput reset
+
+# set usage function
+function usage {
+cat << EOF
+
+proxy-tester is a simple script to check your proxy health by checking th HTTP headers of your specific domain/ip(s) in a file
+
+USAGE : 
+	./proxy-tester -f /path/to/file [-s "socks5ProxyServerAddress"] [-h "httpProxyServerAddress"] [-u "proxyServerUserName"] [-p "proxyServerPassword"]
+Example : 
+	./proxy-tester -s "localhost:9050" -f /path/to/links_file
+
+you can check the log of this script in proxy-tester.log
+
+EOF
+}
+
+# show usage function if -h or --help is argument
+if [[ -z $1 || $1 = @(help|--help) ]]; then
+  usage
+  exit $(( $# ? 0 : 1 ))
+fi
+
+
+# check internet connection
+status=0
+nc -zw 2 ddg.gg 80
+ret="$?"
+if [ "$ret" = 0 -a "$status" = 0 ] ;then
+    status=1
+    else 
+        status=0
+	echo "There's a problem with internet connection"
+	exit -1
+fi
+
+# main function to check input file and work with it 
+function main {
+# usage of this function :
+# main InputFile ProxyProtocol ProxyAddress ProxyUser ProxyPassword
+# example : main links socks5:// localhost:9050 [user] [pass]
+inputFile="$1"
+proxyProtocol="$2"
+proxyAddress="$3"
+proxyUser="$4"
+proxyPass="$5"
+# check arguments of function
+if [[ -z $inputFile || -z $proxyProtocol || -z $proxyAddress ]] ; then
+        echo "You didn't give me enough arguments"
+	exit
+fi
+# check user and password of proxy
+if [[ -z $proxyPass && -z $proxyUser ]]; then
+	proxyPass=""
+	proxyUser=""
+fi
+# check the existence of input file
+if [ -e "$inputFile" ] ; then
+	# check the existence of log file
+	if [ -e "proxy-tester.log" ] ; then
+		mv "proxy-tester.log" "proxy-tester.log-$(date +%y-%m-%d_%H-%M-%S)"
+	fi
+	# do the job!
+	for url in $(cat $inputFile) ; do
+                # how curl with proxy works : 
+                # curl -x, --proxy <[protocol://][user:password@]proxyhost[:port]>
+		httpStatus=$(echo "$url :"| tr "\n" " " && curl -x "$2$4:$5@$3" -ILs "$url" 2>/dev/null | head -n 1) 
+	        echo $httpStatus | tee -a proxy-tester.log	
+	done
+else 
+        echo "Your input file doesn't exist! please check again..."
+        exit
+fi
+}
+
+# set input arguments
+while getopts h:,s:,u:,p:,f: parameters; do
+    case $parameters in
+        h)
+		httpProxy=1
+        	httpProxyAddress=$OPTARG
+		;;
+
+        s)
+            	socks5Proxy=1
+		socks5ProxyAddress=$OPTARG
+        	;;
+
+        f)
+            	inputFile=1
+            	fileAddress=$OPTARG
+        	;;
+
+        u)
+            	proxyUser=1
+            	proxyUserContent=$OPTARG
+        	;;
+	
+	p)
+		proxyPass=1
+		proxyPassContent=$OPTARG
+        	;;
+	*)
+            usage
+        ;;
+    esac
+done
+shift $((OPTIND-1))
+
+# debug the variables
+#echo $httpProxyAddress
+#echo $socks5ProxyAddress
+#echo $fileAddress
+#echo $proxyUserContent
+#echo $proxyPassContent
+
+
+# check the input arguments and do what user wants!
+if [[ -n $fileAddress && -n $httpProxyAddress && -n $proxyUserContent && -n $proxyPassContent ]] ; then
+	main $fileAddress "http://" "$httpProxyAddress" "$proxyUserContent" "$proxyPassContent"
+elif [[  -n $fileAddress && -n $httpProxyAddress && -n $proxyUserContent  ]] ; then
+	main $fileAddress "http://" "$httpProxyAddress" "$proxyUserContent" 
+elif [[ -n $fileAddress && -n $httpProxyAddress ]] ; then
+	main $fileAddress "http://" "$httpProxyAddress" 
+elif [[ -n $fileAddress && -n $socks5ProxyAddress && -n $proxyUserContent && -n $proxyPassContent ]] ; then
+	main $fileAddress "socks5://" "$socks5ProxyAddress" "$proxyUserContent" "$proxyPassContent"
+elif [[  -n $fileAddress && -n $socks5ProxyAddress && -n $proxyUserContent  ]] ; then
+	main $fileAddress "socks5://" "$socks5ProxyAddress" "$proxyUserContent" 
+elif [[ -n $fileAddress && -n $socks5ProxyAddress ]] ; then
+	main $fileAddress "socks5://" "$socks5ProxyAddress" 
+else
+	echo -e "Something's wrong.... please check again!\nif everything is alright then leave an issue in https://github.com/virtualdemon/proxy-tester"
+	exit
+fi
+	
